@@ -1,43 +1,55 @@
 mtype = { DANGER, PROCEED };
 
-chan control_to_traffic1 = [2] of {mtype};
-chan control_to_traffic2 = [2] of {mtype};
-chan control_to_traffic3 = [2] of {mtype};
-chan control_to_traffic4 = [2] of {mtype};
+chan control_to_north = [1] of { mtype };
+chan control_to_south = [1] of { mtype };
+chan control_to_east = [1] of { mtype };
+chan control_to_west = [1] of { mtype };
 
-proctype Control() {
+proctype TrafficMonitor() {
+    do
+    :: control_to_north == PROCEED && control_to_south == PROCEED ->
+        printf("Invariant violation: North-South traffic both signaled to proceed!\n");
+        assert(0);
+    :: control_to_east == PROCEED && control_to_west == PROCEED ->
+        printf("Invariant violation: East-West traffic both signaled to proceed!\n");
+        assert(0);
+    od;
+}
+
+proctype TrafficLight(chan control_channel, mtype initialAspect) {
+    mtype ASPECT = initialAspect;
+
+    do
+    :: control_channel ? PROCEED ->
+        ASPECT = PROCEED;
+        printf("Traffic Light: Switched to PROCEED\n");
+    :: control_channel ? DANGER ->
+        ASPECT = DANGER;
+        printf("Traffic Light: Switched to DANGER\n");
+    od;
+}
+
+proctype CentralControl() {
     do
     :: true ->
-        // control logic
-        control_to_traffic1!PROCEED;
-        control_to_traffic2!PROCEED;
-        control_to_traffic3!DANGER;
-        control_to_traffic4!DANGER;
+        // Simulating alternating control
+        control_to_north!PROCEED; control_to_south!PROCEED;
+        control_to_east!DANGER; control_to_west!DANGER;
+        control_to_north!DANGER; control_to_south!DANGER;
+        control_to_east!PROCEED; control_to_west!PROCEED;
     od;
 }
 
-proctype TrafficLight(chan control_channel) {
-    mtype state;
-    do
-    :: control_channel?state ->
-        // Traffic light logic to handle the received state
-        // Example: set the traffic light to display the received state
-    od;
-}
+ltl safetyConstraint { [](! (control_to_north == PROCEED && control_to_south == PROCEED) && ! (control_to_east == PROCEED && control_to_west == PROCEED)) }
+ltl responseProperty { [] (control_to_north == PROCEED -> <> (control_to_north == DANGER)) }
 
-// Instances of TrafficLight for each traffic light.
-proctype TrafficLight1() {
-    TrafficLight(control_to_traffic1);
-}
-
-proctype TrafficLight2() {
-    TrafficLight(control_to_traffic2);
-}
-
-proctype TrafficLight3() {
-    TrafficLight(control_to_traffic3);
-}
-
-proctype TrafficLight4() {
-    TrafficLight(control_to_traffic4);
+init {
+    atomic {
+        run TrafficLight(control_to_north, PROCEED);
+        run TrafficLight(control_to_south, PROCEED);
+        run TrafficLight(control_to_east, DANGER);
+        run TrafficLight(control_to_west, DANGER);
+        run TrafficMonitor();
+        run CentralControl();
+    }
 }
