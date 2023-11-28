@@ -17,52 +17,55 @@ chan controlToLight2 = [1] of { mtype };
 chan controlToLight3 = [1] of { mtype };
 chan controlToLight4 = [1] of { mtype };
 
-mtype lightState = DANGER;
+mtype lightState1 = DANGER;
+mtype lightState2 = DANGER;
 
 active proctype SafetyMonitor() {
   do
-  :: (lightState == DANGER) ->
-     // Check the safety constraint
-     if
-       :: (controlToLight1 ? DANGER; controlToLight2 ? DANGER; controlToLight3 ? DANGER; controlToLight4 ? DANGER) ->
-            // All lights are displaying DANGER, no violation
-       :: (controlToLight1 ? PROCEED; controlToLight2 ? PROCEED; controlToLight3 ? PROCEED; controlToLight4 ? PROCEED) ->
-            // Violation: North-South and West-East are both signaled to proceed
-            printf("Safety Violation: North-South and West-East traffic signalled to proceed at the same time!\n");
-            assert(0); // Raise an error
-     fi
-  :: (lightState == PROCEED) ->
-     // Update the light state
-     controlToLight1 ! PROCEED;
-     controlToLight2 ! PROCEED;
-     controlToLight3 ! DANGER;
-     controlToLight4 ! DANGER;
+  :: (lightState1 == PROCEED && lightState3 == PROCEED) ||
+     (lightState2 == PROCEED && lightState4 == PROCEED) ->
+     printf("Safety Violation: North-South and West-East traffic signalled to proceed at the same time!\n");
+     assert(0); // Raise an error
   od
 }
 
 proctype CentralControl() {
   do
-  :: lightState = DANGER; // Set the state to DANGER
-  :: lightState = PROCEED; // Set the state to PROCEED
+  :: atomic {
+       controlToLight1 ! DANGER;
+       controlToLight2 ! PROCEED;
+       controlToLight3 ! PROCEED;
+       controlToLight4 ! DANGER;
+       lightState1 = DANGER;
+       lightState2 = PROCEED;
+  }
+  :: atomic {
+       controlToLight1 ! PROCEED;
+       controlToLight2 ! DANGER;
+       controlToLight3 ! DANGER;
+       controlToLight4 ! PROCEED;
+       lightState1 = PROCEED;
+       lightState2 = DANGER;
+  }
   od
 }
 
-proctype TrafficLight(chan controlToLight, int lightNumber) {
-  mtype aspect;
-
+proctype TrafficLight(chan controlToLight, mtype lightState; int lightNumber) {
   do
-  :: controlToLight ? aspect ->
+  :: controlToLight ? lightState ->
      // Update the local light state
-     lightState = aspect;
+     if
+       :: lightNumber == 1 -> lightState1 = lightState;
+       :: lightNumber == 2 -> lightState2 = lightState;
+     fi
   od
 }
 
 init {
   run SafetyMonitor();
   run CentralControl();
-  run TrafficLight(controlToLight1, 1);
-  run TrafficLight(controlToLight2, 2);
-  run TrafficLight(controlToLight3, 3);
-  run TrafficLight(controlToLight4, 4);
+  run TrafficLight(controlToLight1, lightState1, 1);
+  run TrafficLight(controlToLight2, lightState2, 2);
+  run TrafficLight(controlToLight3, lightState3, 3);
+  run TrafficLight(controlToLight4, lightState4, 4);
 }
-
